@@ -223,6 +223,114 @@
 				return ret;
 			}
 		}
+
+		class Leap {
+			constructor() {
+				this.pattern = [];
+			}
+			
+			getNeighborPositions(pos, radius) {
+				const result = new PositionSet();
+				
+				if (pos.isEmpty()) {
+					result.add(Position.NIL);
+				} else if (radius > 1) {
+					for (let i = 1; i <= radius; i++) {
+						const newLeap = new this.constructor();
+						newLeap.pattern = this.pattern.map(p => p * i);
+						for (let scaledPosition of newLeap.getNeighborPositions(pos, 1)) {
+							result.add(scaledPosition);
+						}
+					}
+				} else {
+					if (pos.getLength() > this.pattern.length) {
+						for (let subposition of this.getNeighborPositions(pos.getTail(), radius)) {
+							result.add(subposition.prepend(pos.getHead()));
+						}
+					}
+					
+					for (let displacement of this.pattern) {
+						const newLeap = new this.constructor();
+						newLeap.pattern = this.pattern.filter((p, i) => this.pattern.indexOf(displacement) !== i);
+						
+						for (let subposition of newLeap.getNeighborPositions(pos.getTail(), radius)) {
+							result.add(subposition.prepend(pos.getHead() + displacement));
+							result.add(subposition.prepend(pos.getHead() - displacement));
+						}
+					}
+				}
+				return result;
+			}
+		}
+		
+		class Diagonal extends Leap {
+			static instance = new Diagonal();
+			constructor() {
+				super();
+				this.pattern = [1, 1];
+			}
+		}
+		
+		class Knight extends Leap {
+			static instance = new Knight();
+			constructor() {
+				super();
+				this.pattern = [1, 2];
+			}
+		}
+		
+		class Triagonal extends Leap {
+			static instance = new Triagonal();
+			constructor() {
+				super();
+				this.pattern = [1, 1, 1];
+			}
+		}
+		
+		class Quadragonal extends Leap {
+			static instance = new Quadragonal();
+			constructor() {
+				super();
+				this.pattern = [1, 1, 1, 1];
+			}
+		}
+		
+		class UltraKnight extends Leap {
+			static instance = new UltraKnight();
+			constructor() {
+				super();
+				this.pattern = [1, 2, 4];
+			}
+		}
+		
+		class Vertices {
+			static instance = new Vertices();
+			
+			getNeighborPositions(pos, radius) {
+				const positions = new PositionSet();
+				for (let r = radius; r >= 1; r--) {
+					for (let neighbor of this.getNeighbors(pos, r)) {
+						positions.add(neighbor);
+					}
+				}
+				return positions;
+			}
+			
+			getNeighbors(pos, radius) {
+				const ret = new Set();
+				if (pos.isEmpty()) {
+					ret.add(Position.NIL);
+				} else {
+					const coord = pos.getHead();
+					const tailCoords = pos.getTail();
+					for (let subposition of this.getNeighbors(tailCoords, radius)) {
+						ret.add(subposition.prepend(coord + radius));
+						ret.add(subposition.prepend(coord - radius));
+					}
+				}
+				return ret;
+			}
+		}
 		
 		// Wrap implementations
 		class Non {
@@ -250,6 +358,100 @@
 				}
 				
 				return result;
+			}
+		}
+
+		class Torus {
+			static instance = new Torus();
+			
+			applyWrap(positions, game) {
+				const result = new Set();
+				const dimensionSizes = game.fieldSize;
+				
+				for (let position of positions) {
+					const pos = new PositionBuilder(position);
+					
+					for (let iCoord = 0; iCoord < pos.length; iCoord++) {
+						const coord = pos[iCoord];
+						const max = dimensionSizes[iCoord];
+						
+						if (coord < 0 || coord >= max) {
+							pos[iCoord] = ((coord % max) + max) % max;
+						}
+					}
+					
+					result.add(pos.export());
+				}
+				
+				return result;
+			}
+		}
+		
+		class ReflectEdge {
+			static instance = new ReflectEdge();
+			
+			applyWrap(positions, game) {
+				const result = new Set();
+				const dimensionSizes = game.fieldSize;
+				
+				for (let position of positions) {
+					const pos = new PositionBuilder(position);
+					
+					for (let iCoord = 0; iCoord < pos.length; iCoord++) {
+						const coord = pos[iCoord];
+						const max = dimensionSizes[iCoord];
+						
+						if (coord < 0 || coord >= max) {
+							pos[iCoord] = this.reflect(coord, max);
+						}
+					}
+					
+					result.add(pos.export());
+				}
+				
+				return result;
+			}
+			
+			reflect(coord, max) {
+				if (Math.floor(coord / max) % 2 === 1) {
+					return max - (((coord % max) + max) % max) - 1;
+				} else {
+					return Math.abs(((coord % max) + max) % max) - 1;
+				}
+			}
+		}
+		
+		class ReflectCell {
+			static instance = new ReflectCell();
+			
+			applyWrap(positions, game) {
+				const result = new Set();
+				const dimensionSizes = game.fieldSize;
+				
+				for (let position of positions) {
+					const pos = new PositionBuilder(position);
+					
+					for (let iCoord = 0; iCoord < pos.length; iCoord++) {
+						const coord = pos[iCoord];
+						const max = dimensionSizes[iCoord];
+						
+						if (coord < 0 || coord >= max) {
+							pos[iCoord] = this.reflect(coord, max);
+						}
+					}
+					
+					result.add(pos.export());
+				}
+				
+				return result;
+			}
+			
+			reflect(coord, max) {
+				if (Math.floor(coord / max) % 2 === 1) {
+					return max - (((coord % max) + max) % max) - 2;
+				} else {
+					return Math.abs(((coord % max) + max) % max);
+				}
 			}
 		}
 		
