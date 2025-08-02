@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dimesweeper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+        
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .controls {
+            min-width: 200px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            height: fit-content;
+        }
+        
+        .controls h2 {
+            margin-top: 0;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .control-group input, .control-group select {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        
+        .dimensions-input {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .dimension-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .dimension-control input {
+            width: 60px;
+        }
+        
+        .launch-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+        
+        .launch-btn:hover {
+            background: #45a049;
+        }
+        
+        .game-area {
+            flex: 1;
+        }
+        
+        .field-row {
+            display: grid;
+            gap: 1px;
+            margin: 1px;
+            padding: 1px;
+            border: 1px solid #888;
+        }
+        
+        .boxlet {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #888;
+            background: #c0c0c0;
+            font-family: monospace;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+        
+        .boxlet:hover {
+            background: #d0d0d0;
+        }
+        
+        .boxlet.revealed {
+            background: #e0e0e0;
+            border-style: inset;
+        }
+        
+        .boxlet.flagged {
+            background: #ffff00;
+            color: red;
+        }
+        
+        .boxlet.mine {
+            background: #ff0000;
+            color: white;
+        }
+        
+        .boxlet.correct-flag {
+            background: #00ff00;
+        }
+        
+        .boxlet.wrong-flag {
+            background: #ff0000;
+        }
+        
+        .boxlet.neighbor-highlight {
+            background: #ffff00 !important;
+        }
+        
+        .game-info {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h2>Dimesweeper</h2>
+            
+            <div class="control-group">
+                <label>Dimensions:</label>
+                <input type="number" id="dimensionCount" min="1" max="10" value="2">
+                <div id="dimensionsContainer" class="dimensions-input"></div>
+            </div>
+            
+            <div class="control-group">
+                <label>Mines:</label>
+                <input type="number" id="mineCount" min="0" value="10">
+                <input type="range" id="mineSlider" min="0" value="10">
+            </div>
+            
+            <div class="control-group">
+                <label>Neighborhood:</label>
+                <select id="neighborhood">
+                    <option value="square">Square</option>
+                    <option value="orthogonal" selected>Orthogonal</option>
+                    <option value="diagonal">Diagonal</option>
+                    <option value="triagonal">Triagonal</option>
+                    <option value="quadragonal">Quadragonal</option>
+                    <option value="vertices">Vertices</option>
+                    <option value="knight">Knight</option>
+                    <option value="ultraknight">Ultra Knight</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Radius:</label>
+                <input type="number" id="radius" min="1" value="1">
+            </div>
+            
+            <div class="control-group">
+                <label>Wrapping:</label>
+                <select id="wrapping">
+                    <option value="no" selected>No</option>
+                    <option value="torus">Torus</option>
+                    <option value="reflect_edge">Reflect on Edge</option>
+                    <option value="reflect_cell">Reflect on Cell</option>
+                </select>
+            </div>
+            
+            <button class="launch-btn" onclick="launchGame()">Launch Game</button>
+        </div>
+        
+        <div class="game-area">
+            <div class="game-info" id="gameInfo"></div>
+            <div id="gameContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        // Position system - recreating your linked-list-like structure
+        class Position {
+            static NIL = new class extends Position {
+                getHead() { throw new Error("Cannot get head of NIL"); }
+                getTail() { throw new Error("Cannot get tail of NIL"); }
+                isEmpty() { return true; }
+                getLength() { return 0; }
+                equals(pos) { return this === pos; }
+                hashCode() { return 0; }
+            }();
+            
+            constructor(head, tail) {
+                if (arguments.length === 0) return Position.NIL;
+                this.head = head;
+                this.tail = tail || Position.NIL;
+                this.length = this.tail.getLength() + 1;
+            }
+            
+            static create(i) {
+                return new Position(i, Position.NIL);
+            }
+            
+            getHead() { return this.head; }
+            getTail() { return this.tail; }
+            isEmpty() { return false; }
+            getLength() { return this.length; }
+            
+            prepend(newHead) {
+                return new Position(newHead, this);
+            }
+            
+            equals(pos) {
+                if (!(pos instanceof Position)) return false;
+                if (this === Position.NIL || pos === Position.NIL) return this === pos;
+                return this.head === pos.head && this.tail.equals(pos.tail);
+            }
+            
+            hashCode() {
+                if (this === Position.NIL) return 0;
+                return this.head * 31 + this.tail.hashCode();
+            }
+            
+            toString() {
+                if (this === Position.NIL) return "NIL";
+                let result = [];
+                let pos = this;
+                while (!pos.isEmpty()) {
+                    result.push(pos.getHead());
+                    pos = pos.getTail();
+                }
+                return `(${result.join(' ')})`;
+            }
+        }
+        
+        class PositionBuilder extends Array {
+            constructor(pos) {
+                super();
+                if (pos) {
+                    while (!pos.isEmpty()) {
+                        this.push(pos.getHead());
+                        pos = pos.getTail();
+                    }
+                }
+            }
+            
+            export() {
+                let ret = Position.NIL;
+                for (let i = this.length - 1; i >= 0; i--) {
+                    ret = ret.prepend(this[i]);
+                }
+                return ret;
+            }
+        }
+        
+        class PositionSet extends Set {
+            fillRandomlyWithout(mineCount, fieldSize, firstMove) {
+                this.add(firstMove);
+                this.fillRandomly(mineCount, fieldSize);
+                this.delete(firstMove);
+            }
+            
+            fillRandomly(mineCount, fieldSize) {
+                while (this.size < mineCount) {
+                    const mine = new PositionBuilder();
+                    fieldSize.forEach(dimension => {
+                        mine.push(Math.floor(dimension * Math.random()));
+                    });
+                    this.add(mine.export());
+                }
+            }
+            
+            contains(position) {
+                for (let pos of this) {
+                    if (pos.equals(position)) return true;
+                }
+                return false;
+            }
+            
+            add(position) {
+                // Check if position already exists
+                for (let pos of this) {
+                    if (pos.equals(position)) return this;
+                }
+                super.add(position);
+                return this;
+            }
+            
+            delete(position) {
+                for (let pos of this) {
+                    if (pos.equals(position)) {
+                        super.delete(pos);
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+        
+        // Neighborhood implementations
+        class Orthogonal {
+            static instance = new Orthogonal();
+            
+            getNeighborPositions(pos, radius) {
+                const ret = new PositionSet();
+                const currentHead = pos.getHead();
+                const subcoordinates = pos.getTail();
+                
+                for (let delta = -radius; delta <= radius; delta++) {
+                    if (delta === 0) continue;
+                    ret.add(subcoordinates.prepend(currentHead + delta));
+                }
+                
+                if (!subcoordinates.isEmpty()) {
+                    for (let subposition of this.getNeighborPositions(subcoordinates, radius)) {
+                        ret.add(subposition.prepend(currentHead));
+                    }
+                }
+                
+                return ret;
+            }
+        }
+        
+        class Square {
+            static instance = new Square();
+            
+            getNeighborPositions(pos, radius) {
+                const ret = new PositionSet();
+                
+                if (pos.isEmpty()) {
+                    ret.add(Position.NIL);
+                } else {
+                    for (let subposition of this.getNeighborPositions(pos.getTail(), radius)) {
+                        for (let i = -radius; i <= radius; i++) {
+                            ret.add(subposition.prepend(pos.getHead() + i));
+                        }
+                    }
+                }
+                
+                return ret;
+            }
+        }
+        
+        // Wrap implementations
+        class Non {
+            static instance = new Non();
+            
+            applyWrap(positions, game) {
+                const result = new Set();
+                const dimensionSizes = game.fieldSize;
+                
+                for (let pos of positions) {
+                    const pb = new PositionBuilder(pos);
+                    let valid = true;
+                    
+                    for (let iCoord = 0; iCoord < pb.length; iCoord++) {
+                        const coord = pb[iCoord];
+                        const max = dimensionSizes[iCoord];
+                        
+                        if (coord < 0 || coord >= max) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    
+                    if (valid) result.add(pos);
+                }
+                
+                return result;
+            }
+        }
+        
+        // Boxlet class
+        class Boxlet {
+            constructor(position, game) {
+                this.position = position;
+                this.game = game;
+                this.neighbors = null;
+                this.element = this.createElement();
+            }
+            
+            createElement() {
+                const element = document.createElement('div');
+                element.className = 'boxlet';
+                element.addEventListener('click', (e) => this.handleClick(e));
+                element.addEventListener('contextmenu', (e) => this.handleRightClick(e));
+                element.addEventListener('mouseenter', () => this.handleMouseEnter());
+                element.addEventListener('mouseleave', () => this.handleMouseLeave());
+                return element;
+            }
+            
+            getNeighbors() {
+                if (this.neighbors === null) {
+                    this.neighbors = [];
+                    for (let neighborPos of this.game.findNeighbors(this.position)) {
+                        this.neighbors.push(this.game.getBoxlet(neighborPos));
+                    }
+                }
+                return this.neighbors;
+            }
+            
+            getNeighborMines() {
+                let counter = 0;
+                for (let neigh of this.getNeighbors()) {
+                    if (neigh.getMine()) counter++;
+                }
+                return counter;
+            }
+            
+            getMine() {
+                return this.game.mines.contains(this.position);
+            }
+            
+            getFlag() {
+                return this.game.flags.contains(this.position);
+            }
+            
+            setFlag(f) {
+                if (f) {
+                    this.game.flags.add(this.position);
+                    this.element.textContent = 'F';
+                    this.element.classList.add('flagged');
+                } else {
+                    this.game.flags.delete(this.position);
+                    this.element.textContent = '';
+                    this.element.classList.remove('flagged');
+                }
+            }
+            
+            reveal() {
+                if (!this.getFlag() && !this.isRevealed()) {
+                    this.element.classList.add('revealed');
+                    this.game.revealed.add(this.position);
+                    
+                    if (this.getMine()) {
+                        this.game.lost(this);
+                    } else {
+                        const neighborMines = this.getNeighborMines();
+                        if (neighborMines > 0) {
+                            this.element.textContent = neighborMines.toString();
+                        } else {
+                            for (let n of this.getNeighbors()) {
+                                if (!n.isRevealed()) n.reveal();
+                            }
+                        }
+                    }
+                    this.game.revealedCount++;
+                    this.game.checkWon();
+                }
+            }
+            
+            isRevealed() {
+                return this.game.revealed.contains(this.position);
+            }
+            
+            handleClick(e) {
+                e.preventDefault();
+                if (this.game.firstClick) {
+                    this.game.firstClick(this.position);
+                }
+                
+                if (this.getFlag()) {
+                    this.setFlag(false);
+                } else if (!this.isRevealed()) {
+                    this.reveal();
+                }
+            }
+            
+            handleRightClick(e) {
+                e.preventDefault();
+                if (!this.isRevealed()) {
+                    this.setFlag(!this.getFlag());
+                }
+            }
+            
+            handleMouseEnter() {
+                if (this.game.hints) {
+                    for (let n of this.getNeighbors()) {
+                        n.element.classList.add('neighbor-highlight');
+                    }
+                }
+            }
+            
+            handleMouseLeave() {
+                for (let n of this.getNeighbors()) {
+                    n.element.classList.remove('neighbor-highlight');
+                }
+            }
+        }
+        
+        // FieldRow class
+        class FieldRow {
+            constructor(fieldSize, position, game) {
+                this.position = position;
+                this.subFieldSize = [...fieldSize];
+                this.game = game;
+                this.boxlet = null;
+                this.element = this.createElement();
+            }
+            
+            createElement() {
+                const element = document.createElement('div');
+                element.className = 'field-row';
+                
+                if (this.subFieldSize.length === 0) {
+                    element.style.display = 'block';
+                    this.boxlet = new Boxlet(this.position, this.game);
+                    element.appendChild(this.boxlet.element);
+                } else {
+                    const subFieldSize = [...this.subFieldSize];
+                    const currentDimension = subFieldSize.shift();
+                    
+                    if (this.subFieldSize.length % 2 === 1) {
+                        element.style.gridTemplateColumns = `repeat(${currentDimension}, 1fr)`;
+                    } else {
+                        element.style.gridTemplateRows = `repeat(${currentDimension}, 1fr)`;
+                    }
+                    
+                    for (let index = 0; index < currentDimension; index++) {
+                        const subFieldPosition = new PositionBuilder(this.position);
+                        subFieldPosition.push(index);
+                        const subField = new FieldRow(subFieldSize, subFieldPosition.export(), this.game);
+                        element.appendChild(subField.element);
+                    }
+                }
+                
+                return element;
+            }
+            
+            getBoxlet(pos) {
+                if (this.subFieldSize.length === 0) {
+                    return this.boxlet;
+                } else {
+                    const childIndex = pos.getHead();
+                    const childFieldRow = this.element.children[childIndex].fieldRow;
+                    return childFieldRow.getBoxlet(pos.getTail());
+                }
+            }
+        }
+        
+        // Game class
+        class Game {
+            constructor(fieldSize, mineCount, neighborhoodType = 'orthogonal', neighborhoodRadius = 1, neighborhoodWrap = 'no') {
+                this.fieldSize = fieldSize;
+                this.mineCount = mineCount;
+                this.mines = new PositionSet();
+                this.flags = new PositionSet();
+                this.revealed = new PositionSet();
+                this.revealedCount = 0;
+                this.firstClick = true;
+                this.hints = true;
+                
+                // Set neighborhood
+                switch (neighborhoodType) {
+                    case 'square': this.neighborhoodType = Square.instance; break;
+                    case 'orthogonal': this.neighborhoodType = Orthogonal.instance; break;
+                    default: this.neighborhoodType = Orthogonal.instance;
+                }
+                
+                this.neighborhoodRadius = neighborhoodRadius;
+                
+                // Set wrap
+                switch (neighborhoodWrap) {
+                    case 'no': this.neighborhoodWrap = Non.instance; break;
+                    default: this.neighborhoodWrap = Non.instance;
+                }
+                
+                this.boxletCount = this.countBoxlets(fieldSize);
+                this.field = new FieldRow(fieldSize, Position.NIL, this);
+                
+                // Store reference for getBoxlet
+                this.storeFieldRowReferences(this.field);
+                
+                this.checkWon();
+            }
+            
+            storeFieldRowReferences(fieldRow) {
+                fieldRow.element.fieldRow = fieldRow;
+                for (let child of fieldRow.element.children) {
+                    if (child.fieldRow) {
+                        this.storeFieldRowReferences(child.fieldRow);
+                    }
+                }
+            }
+            
+            countBoxlets(fieldSize) {
+                let result = 1;
+                for (let n of fieldSize) {
+                    result *= n;
+                }
+                return result;
+            }
+            
+            firstClick(clickPos) {
+                this.mines.fillRandomlyWithout(this.mineCount, this.fieldSize, clickPos);
+                this.firstClick = false;
+            }
+            
+            getBoxlet(pos) {
+                return this.field.getBoxlet(pos);
+            }
+            
+            findNeighbors(position) {
+                let neighbors = this.neighborhoodType.getNeighborPositions(position, this.neighborhoodRadius);
+                neighbors = this.neighborhoodWrap.applyWrap(neighbors, this);
+                
+                // Remove the position itself
+                const result = new Set();
+                for (let neighbor of neighbors) {
+                    if (!neighbor.equals(position)) {
+                        result.add(neighbor);
+                    }
+                }
+                
+                return result;
+            }
+            
+            lost(boxlet) {
+                this.end();
+                boxlet.element.classList.add('mine');
+                boxlet.element.textContent = 'M';
+                alert('You lost!');
+            }
+            
+            checkWon() {
+                if (this.revealedCount + this.mineCount === this.boxletCount) {
+                    this.won();
+                }
+            }
+            
+            won() {
+                this.end();
+                const message = this.mineCount === 0 ? 
+                    'You won!\nAnd you didn\'t even need mines.' : 
+                    'You won!';
+                alert(message);
+            }
+            
+            end() {
+                this.hints = false;
+                // Show mine locations
+                for (let mine of this.mines) {
+                    const boxlet = this.getBoxlet(mine);
+                    if (this.flags.contains(mine)) {
+                        boxlet.element.classList.add('correct-flag');
+                    } else {
+                        boxlet.element.textContent = 'M';
+                        boxlet.element.classList.add('mine');
+                    }
+                }
+                
+                // Show wrong flags
+                for (let flag of this.flags) {
+                    if (!this.mines.contains(flag)) {
+                        this.getBoxlet(flag).element.classList.add('wrong-flag');
+                    }
+                }
+            }
+        }
+        
+        let currentGame = null;
+        
+        // UI Management
+        function updateDimensionsUI() {
+            const dimensionCount = parseInt(document.getElementById('dimensionCount').value);
+            const container = document.getElementById('dimensionsContainer');
+            
+            // Clear existing inputs
+            container.innerHTML = '';
+            
+            // Create inputs for each dimension
+            for (let i = 0; i < dimensionCount; i++) {
+                const div = document.createElement('div');
+                div.className = 'dimension-control';
+                
+                const label = document.createElement('span');
+                label.textContent = `Dim ${i + 1}:`;
+                
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.min = '1';
+                input.value = i < 2 ? '8' : '3'; // Default to 8x8 for first two dimensions, 3 for others
+                input.addEventListener('input', updateMineSlider);
+                
+                div.appendChild(label);
+                div.appendChild(input);
+                container.appendChild(div);
+            }
+            
+            updateMineSlider();
+        }
+        
+        function updateMineSlider() {
+            const dimensionInputs = document.querySelectorAll('#dimensionsContainer input');
+            let totalBoxlets = 1;
+            
+            for (let input of dimensionInputs) {
+                totalBoxlets *= parseInt(input.value) || 1;
+            }
+            
+            const maxMines = Math.max(0, totalBoxlets - 1);
+            const mineSlider = document.getElementById('mineSlider');
+            const mineCount = document.getElementById('mineCount');
+            
+            mineSlider.max = maxMines;
+            mineCount.max = maxMines;
+            
+            // Adjust current value if it's too high
+            if (parseInt(mineCount.value) > maxMines) {
+                mineCount.value = Math.min(10, maxMines);
+                mineSlider.value = mineCount.value;
+            }
+        }
+        
+        function launchGame() {
+            const dimensionInputs = document.querySelectorAll('#dimensionsContainer input');
+            const fieldSize = [];
+            
+            for (let input of dimensionInputs) {
+                fieldSize.push(parseInt(input.value) || 1);
+            }
+            
+            const mineCount = parseInt(document.getElementById('mineCount').value) || 0;
+            const neighborhood = document.getElementById('neighborhood').value;
+            const radius = parseInt(document.getElementById('radius').value) || 1;
+            const wrapping = document.getElementById('wrapping').value;
+            
+            try {
+                currentGame = new Game(fieldSize, mineCount, neighborhood, radius, wrapping);
+                
+                const gameContainer = document.getElementById('gameContainer');
+                gameContainer.innerHTML = '';
+                gameContainer.appendChild(currentGame.field.element);
+                
+                updateGameInfo();
+            } catch (error) {
+                alert('Error creating game: ' + error.message);
+                console.error(error);
+            }
+        }
+        
+        function updateGameInfo() {
+            if (!currentGame) return;
+            
+            const info = document.getElementById('gameInfo');
+            const flagsLeft = currentGame.mineCount - currentGame.flags.size;
+            info.textContent = `Mines: ${currentGame.mineCount} | Flags left: ${flagsLeft} | Revealed: ${currentGame.revealedCount}/${currentGame.boxletCount}`;
+        }
+        
+        // Initialize UI
+        document.getElementById('dimensionCount').addEventListener('input', updateDimensionsUI);
+        document.getElementById('mineCount').addEventListener('input', (e) => {
+            document.getElementById('mineSlider').value = e.target.value;
+        });
+        document.getElementById('mineSlider').addEventListener('input', (e) => {
+            document.getElementById('mineCount').value = e.target.value;
+        });
+        
+        // Initialize with 2D setup
+        updateDimensionsUI();
+    </script>
+</body>
+</html>
